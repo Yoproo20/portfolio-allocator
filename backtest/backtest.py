@@ -11,29 +11,29 @@ from allocation.mean_variance import mean_variance_weights
 
 USE_ML_PREDICTIONS = True
 
+
 def main():
 
     returns = pd.read_csv(
         "data/prices/returns_weekly.csv",
         index_col=0,
         parse_dates=True
-    )
+    ).sort_index()
 
     expected_stat = pd.read_csv(
         "data/prices/expected_returns_weekly.csv",
         index_col=0,
         parse_dates=True
-    )
+    ).sort_index()
 
     expected_ml = pd.read_csv(
         "data/prices/predicted_returns_weekly.csv",
         index_col=0,
         parse_dates=True
-    )
+    ).sort_index()
 
-    # prevent lookahead bias for BOTH
-    expected_stat = expected_stat.shift(1)
-    expected_ml = expected_ml.shift(1)
+    expected_stat = expected_stat.reindex(columns=returns.columns).dropna(how="any")
+    expected_ml = expected_ml.reindex(columns=returns.columns).dropna(how="any")
 
     def rank_zscore(df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -46,7 +46,7 @@ def main():
 
     expected_ml_ranked = rank_zscore(expected_ml)
 
-    # Choose μ mode:
+    # Choose mu mode:
     MU_MODE = "blend"   # "stat", "ml_rank", "blend"
     ALPHA_STAT = 0.7    # used only if MU_MODE == "blend"
 
@@ -55,7 +55,11 @@ def main():
     elif MU_MODE == "ml_rank":
         expected_returns = expected_ml_ranked
     elif MU_MODE == "blend":
-        expected_returns = ALPHA_STAT * expected_stat + (1 - ALPHA_STAT) * expected_ml_ranked
+        common_index = expected_stat.index.intersection(expected_ml_ranked.index)
+        expected_returns = (
+            ALPHA_STAT * expected_stat.loc[common_index]
+            + (1 - ALPHA_STAT) * expected_ml_ranked.loc[common_index]
+        )
     else:
         raise ValueError(f"Unknown MU_MODE: {MU_MODE}")
 
